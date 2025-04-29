@@ -1,0 +1,10 @@
+stages:
+  train:
+    cmd: python src/train.py --data_dir data/
+    deps:
+    - data/
+    - src/data_utils.py
+    - src/model.py
+    - src/train.py
+    outs:
+    - mlruns/
