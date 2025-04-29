@@ -3,3 +3,11 @@
 ## Authors
 - Sriram Pillutla
 - Anirudh Kalyan
+
+## Setting Up
+```
+git clone <repo-url>
+pip install dvc
+dvc pull         # fetches all data + models
+dvc repro        # builds processed data & models if needed
+```
