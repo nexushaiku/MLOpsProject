@@ -1,0 +1,27 @@
+name: handwriting_recognition
+
+conda_env: requirements.txt
+entry_points:
+  main:
+    parameters:
+      train_ratio: {type: float, default: 0.7}
+      val_ratio: {type: float, default: 0.15}
+      test_ratio: {type: float, default: 0.15}
+    command: "python src/train.py --train_ratio {train_ratio} --val_ratio {val_ratio} --test_ratio {test_ratio}"
+  
+  evaluate:
+    parameters:
+      run_id: {type: string}
+    command: "python src/evaluate.py --run_id {run_id}"
+  
+  serve:
+    parameters:
+      run_id: {type: string}
+      port: {type: int, default: 5000}
+    command: "python src/api.py --run_id {run_id} --port {port}"
+  
+  infer:
+    parameters:
+      run_id: {type: string}
+      image_path: {type: string}
+    command: "python src/mlproject.py --run_id {run_id} --image_path {image_path}"

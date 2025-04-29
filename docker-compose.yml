@@ -1,0 +1,53 @@
+version: '3'
+
+services:
+  mlflow:
+    build: .
+    ports:
+      - "5000:5000"
+    command: mlflow ui --host 0.0.0.0 --port 5000 --expose-prometheus ./prometheus_metrics
+    volumes:
+      - ./mlruns:/mlruns
+    networks:
+      - monitoring_network
+
+  api:
+    build: .
+    ports:
+      - "5001:5001"
+    command: python src/api.py --run_id ${RUN_ID} --port 5001
+    volumes:
+      - ./models:/models
+    networks:
+      - monitoring_network
+    depends_on:
+      - mlflow
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - monitoring_network
+
+  grafana:
+    image: grafana/grafana-oss
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - monitoring_network
+    depends_on:
+      - prometheus
+
+networks:
+  monitoring_network:
+
+volumes:
+  grafana_data:

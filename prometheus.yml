@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'mlflow'
+    static_configs:
+      - targets: ['localhost:5000']
+    metrics_path: '/prometheus_metrics'
+
+  - job_name: 'training'
+    static_configs:
+      - targets: ['localhost:8000']
+
+  - job_name: 'api'
+    static_configs:
+      - targets: ['localhost:5001']
