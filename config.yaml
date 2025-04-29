@@ -1,0 +1,16 @@
+data_source:
+  type: local
+  path: data_src/          # should contain train/ and test/ subfolders
+
+validation:
+  classes:
+    - defected
+    - no_defected
+  min_per_class: 100
+  allowed_extensions:
+    - .png
+    - .jpg
+    - .jpeg
+  max_image_size:
+    - 640   # width
+    - 480   # height
