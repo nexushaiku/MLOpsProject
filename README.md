@@ -6,7 +6,7 @@
 
 ## Setting Up
 ```
-git clone <repo-url>
+git clone https://github.com/nexushaiku/MLOpsProject.git
 pip install dvc
 dvc pull         # fetches all data + models
 dvc repro        # builds processed data & models if needed
