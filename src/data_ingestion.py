@@ -14,28 +14,26 @@ logger = logging.getLogger(__name__)
 
 def ingest_local(src_root, dest_root):
     """
-    Copy the entire directory tree from src_root → dest_root, 
+    Copy the entire directory tree from src_root → dest_root,
     preserving train/ and test/ subfolders.
+    If src_root == dest_root, skip copying.
     """
+    abs_src = os.path.abspath(src_root)
+    abs_dest = os.path.abspath(dest_root)
+    if abs_src == abs_dest:
+        logger.info(f"Source and destination are identical ({abs_src}); skipping copy.")
+        return
+
     if not os.path.isdir(src_root):
         raise FileNotFoundError(f"Source folder not found: {src_root}")
 
-    # Clean out old data
     shutil.rmtree(dest_root, ignore_errors=True)
     shutil.copytree(src_root, dest_root)
     logger.info(f"Ingested data from {src_root} → {dest_root}")
 
 
 def validate_structure(data_root, classes, min_per_class, allowed_exts, max_size, report_path):
-    """
-    Walk both train/ and test/ under data_root, ensure each class folder exists,
-    has enough files, images are loadable, and within size limits.
-    """
-    report = {
-        "errors": [],
-        "warnings": [],
-        "stats": {}  # e.g. stats["train"]["defected"] = 120
-    }
+    report = {"errors": [], "warnings": [], "stats": {}}
 
     for split in ("train", "test"):
         split_dir = os.path.join(data_root, split)
@@ -50,7 +48,6 @@ def validate_structure(data_root, classes, min_per_class, allowed_exts, max_size
                 report["errors"].append(f"Missing class folder: {split}/{cls}/")
                 continue
 
-            # list files with allowed extensions
             files = [
                 f for f in os.listdir(cls_dir)
                 if os.path.splitext(f)[1].lower() in allowed_exts
@@ -62,7 +59,6 @@ def validate_structure(data_root, classes, min_per_class, allowed_exts, max_size
                     f"{split}/{cls}: only {len(files)} files, expected ≥ {min_per_class}"
                 )
 
-            # per-image checks
             for fname in files:
                 path = os.path.join(cls_dir, fname)
                 try:
@@ -77,12 +73,10 @@ def validate_structure(data_root, classes, min_per_class, allowed_exts, max_size
                         f"{split}/{cls}/{fname}: cannot open ({e})"
                     )
 
-    # write out the report
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2)
 
-    # log & fail on errors
     if report["errors"]:
         logger.error(f"Validation FAILED—see report at {report_path}")
         raise RuntimeError("Data validation errors encountered")
@@ -107,7 +101,6 @@ if __name__ == "__main__":
     )
     args = p.parse_args()
 
-    # load config
     cfg = yaml.safe_load(open(args.config))
     src_cfg = cfg["data_source"]
     val_cfg = cfg["validation"]
@@ -123,9 +116,9 @@ if __name__ == "__main__":
     # 2) validate
     validate_structure(
         data_root       = args.data_root,
-        classes         = val_cfg["classes"],            # e.g. ["defected","no_defected"]
-        min_per_class   = val_cfg["min_per_class"],      # e.g. 100
-        allowed_exts    = val_cfg["allowed_extensions"], # e.g. [".png",".jpg"]
-        max_size        = val_cfg["max_image_size"],     # e.g. [640,480]
+        classes         = val_cfg["classes"],
+        min_per_class   = val_cfg["min_per_class"],
+        allowed_exts    = val_cfg["allowed_extensions"],
+        max_size        = val_cfg["max_image_size"],
         report_path     = args.report_out
     )

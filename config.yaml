@@ -1,6 +1,6 @@
 data_source:
   type: local
-  path: data_src/          # should contain train/ and test/ subfolders
+  path: data/          # should contain train/ and test/ subfolders
 
 validation:
   classes:

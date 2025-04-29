@@ -12,8 +12,8 @@ from torchinfo import summary
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 import time
 
-from src.data_utils import load_3D_dataset
-from src.model import get_model
+from data_utils import load_3D_dataset
+from model import get_model
 
 # Define metrics
 TRAINING_ITERATIONS = Counter('training_iterations_total', 'Total number of training iterations')
