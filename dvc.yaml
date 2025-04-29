@@ -1,6 +1,6 @@
 stages:
   train:
-    cmd: python src/train.py --data_dir data/
+    cmd: python3 src/train.py --data_dir data/
     deps:
     - data/
     - src/data_utils.py
@@ -8,3 +8,13 @@ stages:
     - src/train.py
     outs:
     - mlruns/
+  data_ingestion:
+    cmd: python3 src/data_ingestion.py --config config.yaml --data-root data/ --report-out
+      metrics/data_validation_report.json
+    deps:
+    - config.yaml
+    - src/data_ingestion.py
+    - data/
+    metrics:
+    - metrics/data_validation_report.json:
+        cache: false
