@@ -1,20 +1,33 @@
+# dvc.yaml
 stages:
-  train:
-    cmd: python3 src/train.py --data_dir data/
-    deps:
-    - data/
-    - src/data_utils.py
-    - src/model.py
-    - src/train.py
-    outs:
-    - mlruns/
   data_ingestion:
-    cmd: python3 src/data_ingestion.py --config config.yaml --data-root data/ --report-out
-      metrics/data_validation_report.json
+    cmd: python3 src/data_ingestion.py --config config.yaml --data-root data/ --report-out metrics/data_validation_report.json
     deps:
-    - config.yaml
-    - src/data_ingestion.py
-    - data/
+      - config.yaml
+      - src/data_ingestion.py
+      - data/
     metrics:
-    - metrics/data_validation_report.json:
-        cache: false
+      - metrics/data_validation_report.json:
+          cache: false
+
+  train:
+    # Use python -c to call the specific training function
+    cmd: python3 -c "from src.train import train_model; train_model(train_ratio=${train.train_ratio}, val_ratio=${train.val_ratio}, test_ratio=${train.test_ratio})"
+    deps:
+      # List dependencies for the train_model function
+      - data/  # Assuming train_model needs access to data/
+      - src/data_utils.py
+      - src/model.py
+      - src/train.py
+      # Add dependency on data_ingestion output if needed (implicitly depends on data/ existing)
+    params:
+      # Declare the parameters this stage uses from params.yaml
+      - train.train_ratio
+      - train.val_ratio
+      - train.test_ratio
+      # List any other params from params.yaml used by train_model
+    outs:
+      # Define outputs, typically where MLflow logs experiments
+      - mlruns/
+      # Optionally, add more specific outputs like a saved model file if applicable
+      # - models/final_model.pt

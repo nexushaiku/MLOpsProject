@@ -11,9 +11,11 @@ import argparse
 from torchinfo import summary
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 import time
-
-from data_utils import load_3D_dataset
-from model import get_model
+import yaml
+import pandas as pd
+from scipy.stats import ks_2samp # Example for KS test
+from src.data_utils import load_3D_dataset
+from src.model import get_model
 
 # Define metrics
 TRAINING_ITERATIONS = Counter('training_iterations_total', 'Total number of training iterations')
@@ -24,18 +26,55 @@ BATCH_DURATION = Histogram('batch_duration_seconds', 'Time for batch processing'
 # Start metrics server
 start_http_server(8000)
 
-def train_model(data_dir, train_ratio, val_ratio, test_ratio, experiment_name="3D_Print_Defect_Detector"):
+def extract_reference_features(dataloader, device, num_samples=1000):
+    # Example: Extract simple image statistics (mean, std)
+    # In reality, you might extract features from an intermediate layer
+    # or use a more sophisticated method.
+    features = []
+    count = 0
+    with torch.no_grad():
+        for inputs, _ in dataloader:
+            inputs = inputs.to(device)
+            # Flatten and get basic stats per image
+            batch_features = torch.cat([
+                inputs.mean(dim=[1,2,3]).unsqueeze(1),
+                inputs.std(dim=[1,2,3]).unsqueeze(1)
+            ], dim=1).cpu().numpy()
+            features.append(batch_features)
+            count += inputs.size(0)
+            if count >= num_samples:
+                break
+    if not features:
+        return None
+    all_features = np.concatenate(features, axis=0)[:num_samples]
+    return pd.DataFrame(all_features, columns=['mean', 'std']) # Example columns
+
+
+def load_params(params_file='params.yaml'):
+    try:
+        with open(params_file, 'r') as f:
+            params = yaml.safe_load(f)
+        return params
+    except FileNotFoundError:
+        print(f"Warning: {params_file} not found. Using default parameters.")
+        return {}
+
+def train_model(train_ratio, val_ratio, test_ratio, data_dir="./data", experiment_name="3D_Print_Defect_Detector"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    
+
     # Set up MLflow experiment
     mlflow.set_experiment(experiment_name)
     
-    # Hyperparameters
-    num_epochs = 10
-    batch_size = 64
-    learning_rate = 0.001
+    # Load parameters from params.yaml
+    params = load_params()
+    train_params = params.get('train', {})
     
+    # Hyperparameters with defaults from params.yaml
+    num_epochs = train_params.get('num_epochs', 10)
+    batch_size = train_params.get('batch_size', 64)
+    learning_rate = train_params.get('learning_rate', 0.001)
+
     # Data loading with specified split ratios
     train_loader, val_loader, test_loader = load_3D_dataset(
         data_dir=data_dir,
@@ -44,12 +83,12 @@ def train_model(data_dir, train_ratio, val_ratio, test_ratio, experiment_name="3
         val_ratio=val_ratio,
         test_ratio=test_ratio
     )
-    
+
     # Initialize model, loss, and optimizer
     model = get_model().to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    
+
     # Start MLflow run
     with mlflow.start_run() as run:
         # Log parameters
@@ -62,28 +101,34 @@ def train_model(data_dir, train_ratio, val_ratio, test_ratio, experiment_name="3
             "learning_rate": learning_rate,
             "optimizer": optimizer.__class__.__name__
         })
-        
+        print("Generating reference data for drift detection...")
+        reference_data_df = extract_reference_features(train_loader, device)
+        if reference_data_df is not None:
+            reference_data_path = "reference_data.csv"
+            reference_data_df.to_csv(reference_data_path, index=False)
+            mlflow.log_artifact(reference_data_path, artifact_path="drift_reference")
+            print(f"Logged reference data to MLflow artifact: {reference_data_path}")
+
         # Log model summary as an artifact
         model_summary = summary(model, input_size=(batch_size, 3, 128, 128), verbose=0)
         with open("model_summary.txt", "w") as f:
             f.write(str(model_summary))
         mlflow.log_artifact("model_summary.txt")
-        
+
         # Initialize lists to store metrics for plotting
         train_losses = []
         val_losses = []
         edit_distances = []
-        
+
         # Training loop
         for epoch in range(num_epochs):
             TRAINING_ITERATIONS.inc()
+            
             model.train()
             running_loss = 0.0
-            
             for inputs, labels in train_loader:
                 # print(inputs.shape)
                 start_time = time.time()
-
                 inputs, labels = inputs.to(device), labels.to(device)
                 
                 # Zero the parameter gradients
@@ -94,6 +139,7 @@ def train_model(data_dir, train_ratio, val_ratio, test_ratio, experiment_name="3
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
+                
                 TRAINING_LOSS.set(loss.item())
                 running_loss += loss.item()
                 BATCH_DURATION.observe(time.time() - start_time)
@@ -126,10 +172,10 @@ def train_model(data_dir, train_ratio, val_ratio, test_ratio, experiment_name="3
             
             epoch_val_loss = val_loss / len(val_loader)
             val_losses.append(epoch_val_loss)
-            
             accuracy = 100 * correct / total
             avg_edit_distance = edit_distance_sum / total
             edit_distances.append(avg_edit_distance)
+            
             VALIDATION_ACCURACY.set(epoch_val_loss)
             
             # Log metrics to MLflow
@@ -197,7 +243,7 @@ def train_model(data_dir, train_ratio, val_ratio, test_ratio, experiment_name="3
         
         # Log the model with signature
         mlflow.pytorch.log_model(
-            model, 
+            model,
             "model",
             signature=signature
         )
@@ -206,11 +252,26 @@ def train_model(data_dir, train_ratio, val_ratio, test_ratio, experiment_name="3
         return run.info.run_id
 
 if __name__ == "__main__":
+    # Load parameters from params.yaml
+    params = load_params()
+    
+    # Extract parameters with defaults
+    train_params = params.get('train', {})
+    data_dir = params.get('data_dir', './data')
+    
     parser = argparse.ArgumentParser(description="Train handwriting recognition model")
-    parser.add_argument("--data_dir",     type=str, default="./data", help="Directory containing the dataset")
-    parser.add_argument("--train_ratio", type=float, default=0.7, help="Ratio of training data")
-    parser.add_argument("--val_ratio", type=float, default=0.15, help="Ratio of validation data")
-    parser.add_argument("--test_ratio", type=float, default=0.15, help="Ratio of test data")
+    parser.add_argument("--data_dir", type=str, default=data_dir, 
+                        help="Directory containing the dataset")
+    parser.add_argument("--train_ratio", type=float, 
+                        default=train_params.get('train_ratio', 0.7), 
+                        help="Ratio of training data")
+    parser.add_argument("--val_ratio", type=float, 
+                        default=train_params.get('val_ratio', 0.15), 
+                        help="Ratio of validation data")
+    parser.add_argument("--test_ratio", type=float, 
+                        default=train_params.get('test_ratio', 0.15), 
+                        help="Ratio of test data")
+    
     args = parser.parse_args()
     
-    train_model(args.data_dir, args.train_ratio, args.val_ratio, args.test_ratio)
+    train_model(args.train_ratio, args.val_ratio, args.test_ratio, args.data_dir)
