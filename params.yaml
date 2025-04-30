@@ -1,0 +1,22 @@
+# Basic configuration
+data_dir: "./data"
+
+# Training parameters for 3D Printing Defect Detection
+train:
+  # Data split ratios
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  
+  # Model hyperparameters
+  num_epochs: 10
+  batch_size: 64
+  learning_rate: 0.001
+  
+  # Experiment tracking
+  experiment_name: "3D_Print_Defect_Detector_Final"
+
+# Optional: Parameters for model serving (if you add this stage later)
+# serve_api:
+#   run_id: "latest"  # Replace with actual run_id after training
+#   port: 5001
